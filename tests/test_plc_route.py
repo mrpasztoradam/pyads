@@ -1,4 +1,3 @@
-import time
 import unittest
 import threading
 import socket
@@ -21,7 +20,7 @@ class PLCRouteTestCase(unittest.TestCase):
     PLC_AMS_ID = "11.22.33.44.1.1"
 
     def setUp(self):
-        pass
+        self.receiver_ready = threading.Event()
 
     def tearDown(self):
         pass
@@ -29,6 +28,7 @@ class PLCRouteTestCase(unittest.TestCase):
     def plc_route_receiver(self):
         with closing(socket.socket(socket.AF_INET, socket.SOCK_DGRAM)) as sock:
             sock.bind(("", PORT_REMOTE_UDP))
+            self.receiver_ready.set()
 
             # Keep looping until we get an add address packet
             addr = [0]
@@ -156,46 +156,42 @@ class PLCRouteTestCase(unittest.TestCase):
             # Start receiving listener
             route_thread = threading.Thread(target=self.plc_route_receiver, daemon=True)
             route_thread.start()
-
-            time.sleep(1)
+            # UDP drops packets sent before the receiver is bound, so wait
+            self.assertTrue(self.receiver_ready.wait(timeout=5))
 
             # Try to set up a route with ourselves using all the optionals
-            try:
-                result = add_route_to_plc(
-                    self.SENDER_AMS,
-                    self.HOSTNAME,
-                    self.PLC_IP,
-                    self.USERNAME,
-                    self.PASSWORD,
-                    route_name=self.ROUTE_NAME,
-                    added_net_id=self.ADDING_AMS_ID,
-                )
-            except:
-                result = None
+            result = add_route_to_plc(
+                self.SENDER_AMS,
+                self.HOSTNAME,
+                self.PLC_IP,
+                self.USERNAME,
+                self.PASSWORD,
+                route_name=self.ROUTE_NAME,
+                added_net_id=self.ADDING_AMS_ID,
+            )
 
-            self.assertTrue(result)
+            self.assertIs(result, True)
 
     def test_incorrect_route(self):
         if platform_is_linux():
             # Start receiving listener
             route_thread = threading.Thread(target=self.plc_route_receiver, daemon=True)
             route_thread.start()
+            # UDP drops packets sent before the receiver is bound, so wait
+            self.assertTrue(self.receiver_ready.wait(timeout=5))
 
             # Try to set up a route with ourselves using all the optionals AND an incorrect password
-            try:
-                result = add_route_to_plc(
-                    self.SENDER_AMS,
-                    self.HOSTNAME,
-                    self.PLC_IP,
-                    self.USERNAME,
-                    "Incorrect Password",
-                    route_name=self.ROUTE_NAME,
-                    added_net_id=self.ADDING_AMS_ID,
-                )
-            except:
-                result = None
+            result = add_route_to_plc(
+                self.SENDER_AMS,
+                self.HOSTNAME,
+                self.PLC_IP,
+                self.USERNAME,
+                "Incorrect Password",
+                route_name=self.ROUTE_NAME,
+                added_net_id=self.ADDING_AMS_ID,
+            )
 
-            self.assertFalse(result)
+            self.assertIs(result, False)
 
 
 if __name__ == "__main__":
